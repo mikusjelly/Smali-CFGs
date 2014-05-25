@@ -16,4 +16,4 @@ Smali Calls XRefs CFG.
 	$ xref.py -d "./sample/smali/" -c "Lcom/vvt/polymorphic/PolymorphicContainer;->startServer()V"
 
 
-![](https://raw.github.com/EugenioDelfa/Smali-CFGs/master/imgs/xrefs_example-1.png)
+![](https://raw.github.com/EugenioDelfa/Smali-CFGs/master/imgs/startServer_single.png)
