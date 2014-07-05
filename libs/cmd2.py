@@ -365,10 +365,10 @@ class Cmd(cmd.Cmd):
     timing = False              # Prints elapsed time for each command
     # make sure your terminators are not in legalChars!
     legalChars = u'!#$%.:?@_' + pyparsing.alphanums + pyparsing.alphas8bit
-    shortcuts = {'?': 'help'}
+    shortcuts = {'?': 'help', '!': 'shell', '@': 'load', '@@': '_relative_load'}
     excludeFromHistory = '''run r list l history hi ed edit li eof'''.split()
     default_to_shell = False
-    noSpecialParse = 'set exit'.split()
+    noSpecialParse = 'set ed edit exit'.split()
     defaultExtension = 'txt'            # For ``save``, ``load``, etc.
     default_file_name = 'command.txt'   # For ``save``, ``load``, etc.
     abbrev = True                       # Abbreviated commands recognized
@@ -473,8 +473,7 @@ class Cmd(cmd.Cmd):
         self.pystate = {}
         self.shortcuts = sorted(self.shortcuts.items(), reverse=True)
         self.keywords = self.reserved_words + [fname[3:] for fname in dir(self) 
-                                               if fname.startswith('do_')]
-        self.prompt = "(ed@CFGCli) > "
+                                               if fname.startswith('do_')]            
         self._init_parser()
             
     def do_shortcuts(self, args):
@@ -492,6 +491,181 @@ class Cmd(cmd.Cmd):
     multilineCommands = []
     
     def _init_parser(self):
+        r'''
+        >>> c = Cmd()
+        >>> c.multilineCommands = ['multiline']
+        >>> c.case_insensitive = True
+        >>> c._init_parser()
+        >>> print (c.parser.parseString('').dump())
+        []
+        >>> print (c.parser.parseString('').dump())
+        []        
+        >>> print (c.parser.parseString('/* empty command */').dump())
+        []        
+        >>> print (c.parser.parseString('plainword').dump())
+        ['plainword', '']
+        - command: plainword
+        - statement: ['plainword', '']
+          - command: plainword        
+        >>> print (c.parser.parseString('termbare;').dump())
+        ['termbare', '', ';', '']
+        - command: termbare
+        - statement: ['termbare', '', ';']
+          - command: termbare
+          - terminator: ;
+        - terminator: ;        
+        >>> print (c.parser.parseString('termbare; suffx').dump())
+        ['termbare', '', ';', 'suffx']
+        - command: termbare
+        - statement: ['termbare', '', ';']
+          - command: termbare
+          - terminator: ;
+        - suffix: suffx
+        - terminator: ;        
+        >>> print (c.parser.parseString('barecommand').dump())
+        ['barecommand', '']
+        - command: barecommand
+        - statement: ['barecommand', '']
+          - command: barecommand
+        >>> print (c.parser.parseString('COMmand with args').dump())
+        ['command', 'with args']
+        - args: with args
+        - command: command
+        - statement: ['command', 'with args']
+          - args: with args
+          - command: command
+        >>> print (c.parser.parseString('command with args and terminator; and suffix').dump())
+        ['command', 'with args and terminator', ';', 'and suffix']
+        - args: with args and terminator
+        - command: command
+        - statement: ['command', 'with args and terminator', ';']
+          - args: with args and terminator
+          - command: command
+          - terminator: ;
+        - suffix: and suffix
+        - terminator: ;
+        >>> print (c.parser.parseString('simple | piped').dump())
+        ['simple', '', '|', ' piped']
+        - command: simple
+        - pipeTo:  piped
+        - statement: ['simple', '']
+          - command: simple
+        >>> print (c.parser.parseString('double-pipe || is not a pipe').dump())
+        ['double', '-pipe || is not a pipe']
+        - args: -pipe || is not a pipe
+        - command: double
+        - statement: ['double', '-pipe || is not a pipe']
+          - args: -pipe || is not a pipe
+          - command: double
+        >>> print (c.parser.parseString('command with args, terminator;sufx | piped').dump())
+        ['command', 'with args, terminator', ';', 'sufx', '|', ' piped']
+        - args: with args, terminator
+        - command: command
+        - pipeTo:  piped
+        - statement: ['command', 'with args, terminator', ';']
+          - args: with args, terminator
+          - command: command
+          - terminator: ;
+        - suffix: sufx
+        - terminator: ;
+        >>> print (c.parser.parseString('output into > afile.txt').dump())
+        ['output', 'into', '>', 'afile.txt']
+        - args: into
+        - command: output
+        - output: >
+        - outputTo: afile.txt
+        - statement: ['output', 'into']
+          - args: into
+          - command: output   
+        >>> print (c.parser.parseString('output into;sufx | pipethrume plz > afile.txt').dump())
+        ['output', 'into', ';', 'sufx', '|', ' pipethrume plz', '>', 'afile.txt']
+        - args: into
+        - command: output
+        - output: >
+        - outputTo: afile.txt
+        - pipeTo:  pipethrume plz
+        - statement: ['output', 'into', ';']
+          - args: into
+          - command: output
+          - terminator: ;
+        - suffix: sufx
+        - terminator: ;
+        >>> print (c.parser.parseString('output to paste buffer >> ').dump())
+        ['output', 'to paste buffer', '>>', '']
+        - args: to paste buffer
+        - command: output
+        - output: >>
+        - statement: ['output', 'to paste buffer']
+          - args: to paste buffer
+          - command: output
+        >>> print (c.parser.parseString('ignore the /* commented | > */ stuff;').dump())
+        ['ignore', 'the /* commented | > */ stuff', ';', '']
+        - args: the /* commented | > */ stuff
+        - command: ignore
+        - statement: ['ignore', 'the /* commented | > */ stuff', ';']
+          - args: the /* commented | > */ stuff
+          - command: ignore
+          - terminator: ;
+        - terminator: ;
+        >>> print (c.parser.parseString('has > inside;').dump())
+        ['has', '> inside', ';', '']
+        - args: > inside
+        - command: has
+        - statement: ['has', '> inside', ';']
+          - args: > inside
+          - command: has
+          - terminator: ;
+        - terminator: ;        
+        >>> print (c.parser.parseString('multiline has > inside an unfinished command').dump())
+        ['multiline', ' has > inside an unfinished command']
+        - multilineCommand: multiline        
+        >>> print (c.parser.parseString('multiline has > inside;').dump())
+        ['multiline', 'has > inside', ';', '']
+        - args: has > inside
+        - multilineCommand: multiline
+        - statement: ['multiline', 'has > inside', ';']
+          - args: has > inside
+          - multilineCommand: multiline
+          - terminator: ;
+        - terminator: ;        
+        >>> print (c.parser.parseString('multiline command /* with comment in progress;').dump())
+        ['multiline', ' command /* with comment in progress;']
+        - multilineCommand: multiline
+        >>> print (c.parser.parseString('multiline command /* with comment complete */ is done;').dump())
+        ['multiline', 'command /* with comment complete */ is done', ';', '']
+        - args: command /* with comment complete */ is done
+        - multilineCommand: multiline
+        - statement: ['multiline', 'command /* with comment complete */ is done', ';']
+          - args: command /* with comment complete */ is done
+          - multilineCommand: multiline
+          - terminator: ;
+        - terminator: ;
+        >>> print (c.parser.parseString('multiline command ends\n\n').dump())
+        ['multiline', 'command ends', '\n', '\n']
+        - args: command ends
+        - multilineCommand: multiline
+        - statement: ['multiline', 'command ends', '\n', '\n']
+          - args: command ends
+          - multilineCommand: multiline
+          - terminator: ['\n', '\n']
+        - terminator: ['\n', '\n']
+        >>> print (c.parser.parseString('multiline command "with term; ends" now\n\n').dump())
+        ['multiline', 'command "with term; ends" now', '\n', '\n']
+        - args: command "with term; ends" now
+        - multilineCommand: multiline
+        - statement: ['multiline', 'command "with term; ends" now', '\n', '\n']
+          - args: command "with term; ends" now
+          - multilineCommand: multiline
+          - terminator: ['\n', '\n']
+        - terminator: ['\n', '\n']
+        >>> print (c.parser.parseString('what if "quoted strings /* seem to " start comments?').dump())
+        ['what', 'if "quoted strings /* seem to " start comments?']
+        - args: if "quoted strings /* seem to " start comments?
+        - command: what
+        - statement: ['what', 'if "quoted strings /* seem to " start comments?']
+          - args: if "quoted strings /* seem to " start comments?
+          - command: what
+        '''
         #outputParser = (pyparsing.Literal('>>') | (pyparsing.WordStart() + '>') | pyparsing.Regex('[^=]>'))('output')
         outputParser = (pyparsing.Literal(self.redirector *2) | \
                        (pyparsing.WordStart() + self.redirector) | \
@@ -853,7 +1027,57 @@ class Cmd(cmd.Cmd):
                     pass
         except (ValueError, AttributeError, NotSettableError) as e:
             self.do_show(arg)
-
+                
+    def do_pause(self, arg):
+        'Displays the specified text then waits for the user to press RETURN.'
+        raw_input(arg + '\n')
+        
+    def do_shell(self, arg):
+        'execute a command as if at the OS prompt.'
+        os.system(arg)
+                
+    def do_py(self, arg):  
+        '''
+        py <command>: Executes a Python command.
+        py: Enters interactive Python mode.
+        End with ``Ctrl-D`` (Unix) / ``Ctrl-Z`` (Windows), ``quit()``, '`exit()``.
+        Non-python commands can be issued with ``cmd("your command")``.
+        Run python code from external files with ``run("filename.py")``
+        '''
+        self.pystate['self'] = self
+        arg = arg.parsed.raw[2:].strip()
+        localvars = (self.locals_in_py and self.pystate) or {}
+        interp = InteractiveConsole(locals=localvars)
+        interp.runcode('import sys, os;sys.path.insert(0, os.getcwd())')
+        if arg.strip():
+            interp.runcode(arg)
+        else:
+            def quit():
+                raise EmbeddedConsoleExit
+            def onecmd_plus_hooks(arg):
+                return self.onecmd_plus_hooks(arg + '\n')
+            def run(arg):
+                try:
+                    file = open(arg)
+                    interp.runcode(file.read())
+                    file.close()
+                except IOError as e:
+                    self.perror(e)
+            self.pystate['quit'] = quit
+            self.pystate['exit'] = quit
+            self.pystate['cmd'] = onecmd_plus_hooks
+            self.pystate['run'] = run
+            try:
+                cprt = 'Type "help", "copyright", "credits" or "license" for more information.'        
+                keepstate = Statekeeper(sys, ('stdin','stdout'))
+                sys.stdout = self.stdout
+                sys.stdin = self.stdin
+                interp.interact(banner= "Python %s on %s\n%s\n(%s)\n%s" %
+                       (sys.version, sys.platform, cprt, self.__class__.__name__, self.do_py.__doc__))
+            except EmbeddedConsoleExit:
+                pass
+            keepstate.restore()
+            
     @options([make_option('-s', '--script', action="store_true", help="Script format; no separation lines"),
              ], arg_desc = '(limit on which commands to include)')
     def do_history(self, arg, opts):
@@ -880,14 +1104,167 @@ class Cmd(cmd.Cmd):
             else:
                 return self.history[-1]
         except IndexError:
-            return None
-            
+            return None        
+    def do_list(self, arg):
+        """list [arg]: lists last command issued
+        
+        no arg -> list most recent command
+        arg is integer -> list one history item, by index
+        a..b, a:b, a:, ..b -> list spans from a (or start) to b (or end)
+        arg is string -> list all commands matching string search
+        arg is /enclosed in forward-slashes/ -> regular expression search
+        """
+        try:
+            history = self.history.span(arg or '-1')
+        except IndexError:
+            history = self.history.search(arg)
+        for hi in history:
+            self.poutput(hi.pr())
+
+    do_hi = do_history
+    do_l = do_list
+    do_li = do_list
+        
+    def do_ed(self, arg):
+        """ed: edit most recent command in text editor
+        ed [N]: edit numbered command from history
+        ed [filename]: edit specified file name
+        
+        commands are run after editor is closed.
+        "set edit (program-name)" or set  EDITOR environment variable
+        to control which editing program is used."""
+        if not self.editor:
+            raise EnvironmentError("Please use 'set editor' to specify your text editing program of choice.")
+        filename = self.default_file_name
+        if arg:
+            try:
+                buffer = self.last_matching(int(arg))
+            except ValueError:
+                filename = arg
+                buffer = ''
+        else:
+            buffer = self.history[-1]
+
+        if buffer:
+            f = open(os.path.expanduser(filename), 'w')
+            f.write(buffer or '')
+            f.close()        
+                
+        os.system('%s %s' % (self.editor, filename))
+        self.do__load(filename)
+    do_edit = do_ed
+    
     saveparser = (pyparsing.Optional(pyparsing.Word(pyparsing.nums)^'*')("idx") + 
                   pyparsing.Optional(pyparsing.Word(legalChars + '/\\'))("fname") +
                   pyparsing.stringEnd)    
+    def do_save(self, arg):
+        """`save [N] [filename.ext]`
 
-    urlre = re.compile('(https?://[-\\w\\./]+)')
+        Saves command from history to file.
+
+        | N => Number of command (from history), or `*`; 
+        |      most recent command if omitted"""
+
+        try:
+            args = self.saveparser.parseString(arg)
+        except pyparsing.ParseException:
+            self.perror('Could not understand save target %s' % arg)
+            raise SyntaxError(self.do_save.__doc__)
+        fname = args.fname or self.default_file_name
+        if args.idx == '*':
+            saveme = '\n\n'.join(self.history[:])
+        elif args.idx:
+            saveme = self.history[int(args.idx)-1]
+        else:
+            saveme = self.history[-1]
+        try:
+            f = open(os.path.expanduser(fname), 'w')
+            f.write(saveme)
+            f.close()
+            self.pfeedback('Saved to %s' % (fname))
+        except Exception as e:
+            self.perror('Error saving %s' % (fname))
+            raise
+            
+    def read_file_or_url(self, fname):
+        # TODO: not working on localhost
+        if isinstance(fname, file):
+            result = open(fname, 'r')
+        else:
+            match = self.urlre.match(fname)
+            if match:
+                result = urllib.urlopen(match.group(1))
+            else:
+                fname = os.path.expanduser(fname)
+                try:
+                    result = open(os.path.expanduser(fname), 'r')
+                except IOError:                    
+                    result = open('%s.%s' % (os.path.expanduser(fname), 
+                                             self.defaultExtension), 'r')
+        return result
+        
+    def do__relative_load(self, arg=None):
+        '''
+        Runs commands in script at file or URL; if this is called from within an
+        already-running script, the filename will be interpreted relative to the 
+        already-running script's directory.'''
+        if arg:
+            arg = arg.split(None, 1)
+            targetname, args = arg[0], (arg[1:] or [''])[0]
+            targetname = os.path.join(self.current_script_dir or '', targetname)
+            self.do__load('%s %s' % (targetname, args))
     
+    urlre = re.compile('(https?://[-\\w\\./]+)')
+    def do_load(self, arg=None):           
+        """Runs script of command(s) from a file or URL."""
+        if arg is None:
+            targetname = self.default_file_name
+        else:
+            arg = arg.split(None, 1)
+            targetname, args = arg[0], (arg[1:] or [''])[0].strip()
+        try:
+            target = self.read_file_or_url(targetname)
+        except IOError as e:
+            self.perror('Problem accessing script from %s: \n%s' % (targetname, e))
+            return
+        keepstate = Statekeeper(self, ('stdin','use_rawinput','prompt',
+                                       'continuation_prompt','current_script_dir'))
+        self.stdin = target    
+        self.use_rawinput = False
+        self.prompt = self.continuation_prompt = ''
+        self.current_script_dir = os.path.split(targetname)[0]
+        stop = self._cmdloop()
+        self.stdin.close()
+        keepstate.restore()
+        self.lastcmd = ''
+        return stop and (stop != self._STOP_SCRIPT_NO_EXIT)    
+    do__load = do_load  # avoid an unfortunate legacy use of do_load from sqlpython
+    
+    def do_run(self, arg):
+        """run [arg]: re-runs an earlier command
+        
+        no arg -> run most recent command
+        arg is integer -> run one history item, by index
+        arg is string -> run most recent command by string search
+        arg is /enclosed in forward-slashes/ -> run most recent by regex
+        """        
+        'run [N]: runs the SQL that was run N commands ago'
+        runme = self.last_matching(arg)
+        self.pfeedback(runme)
+        if runme:
+            stop = self.onecmd_plus_hooks(runme)
+    do_r = do_run        
+            
+    def fileimport(self, statement, source):
+        try:
+            f = open(os.path.expanduser(source))
+        except IOError:
+            self.stdout.write("Couldn't read from file %s\n" % source)
+            return ''
+        data = f.read()
+        f.close()
+        return data
+
     def runTranscriptTests(self, callargs):
         class TestMyAppCase(Cmd2TestCase):
             CmdApp = self.__class__        
@@ -908,11 +1285,18 @@ class Cmd(cmd.Cmd):
         parser.add_option('-t', '--test', dest='test',
                action="store_true", 
                help='Test against transcript(s) in FILE (wildcards OK)')
+        parser.add_option('-d', '--dir', dest='sources_dir',
+               action="store", 
+               help='Where ApkTool Stored Smali Files.')
+
         (callopts, callargs) = parser.parse_args()
         if callopts.test:
             self.runTranscriptTests(callargs)
+        elif not callopts.sources_dir:
+            print "ERROR: Option -d is Mandatory."        
         else:
             if not self.run_commands_at_invocation(callargs):
+                self.init(callopts.sources_dir)
                 self._cmdloop()   
             
 class HistoryItem(str):
@@ -925,6 +1309,27 @@ class HistoryItem(str):
         return self.listformat % (self.idx, str(self))
         
 class History(list):
+    '''A list of HistoryItems that knows how to respond to user requests.
+    >>> h = History([HistoryItem('first'), HistoryItem('second'), HistoryItem('third'), HistoryItem('fourth')])
+    >>> h.span('-2..')
+    ['third', 'fourth']
+    >>> h.span('2..3')
+    ['second', 'third']
+    >>> h.span('3')
+    ['third']    
+    >>> h.span(':')
+    ['first', 'second', 'third', 'fourth']
+    >>> h.span('2..')
+    ['second', 'third', 'fourth']
+    >>> h.span('-1')
+    ['fourth']    
+    >>> h.span('-2..-3')
+    ['third', 'second']      
+    >>> h.search('o')
+    ['second', 'fourth']
+    >>> h.search('/IR/')
+    ['first', 'third']
+    '''
     def zero_based_index(self, onebased):
         result = onebased
         if result > 0:
