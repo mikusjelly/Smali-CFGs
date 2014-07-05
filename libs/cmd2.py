@@ -1283,22 +1283,16 @@ class Cmd(cmd.Cmd):
 
     def cmdloop(self):
         parser = optparse.OptionParser()
-        parser.add_option('-t', '--test', dest='test',
-               action="store_true", 
-               help='Test against transcript(s) in FILE (wildcards OK)')
         parser.add_option('-d', '--dir', dest='sources_dir',
                action="store", 
                help='Where ApkTool Stored Smali Files.')
 
         (callopts, callargs) = parser.parse_args()
-        if callopts.test:
-            self.runTranscriptTests(callargs)
-        elif not callopts.sources_dir:
+        if not callopts.sources_dir:
             print "ERROR: Option -d is Mandatory."        
         else:
-            if not self.run_commands_at_invocation(callargs):
-                self.init(callopts.sources_dir)
-                self._cmdloop()   
+            self.init(callopts.sources_dir)
+            self._cmdloop()   
             
 class HistoryItem(str):
     listformat = '-------------------------[%d]\n%s\n'

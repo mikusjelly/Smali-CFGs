@@ -10,7 +10,7 @@ from walkers.instructions import InstructionsFinder
 from printers.graphs import GraphManager
 from printers.console import ConsoleManager
 
-from libs.cmd2 import Cmd, make_option, options
+from libs.cmd2 import Cmd, make_option, options, Cmd2TestCase
 import optparse, sys
 
 #import getopt, sys
@@ -189,7 +189,6 @@ class CmdLineApp(Cmd):
 			except:
 				self.cprint.print_error("Complex Graph can't be rendered with graphviz libraries, using .dot format instead!\n")
 				graph_mgr.draw("CrossReferences", False)
-
 
 app = CmdLineApp()
 app.cmdloop()
