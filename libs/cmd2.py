@@ -474,6 +474,7 @@ class Cmd(cmd.Cmd):
         self.shortcuts = sorted(self.shortcuts.items(), reverse=True)
         self.keywords = self.reserved_words + [fname[3:] for fname in dir(self) 
                                                if fname.startswith('do_')]            
+        self.prompt = "ed@CFGs > "
         self._init_parser()
             
     def do_shortcuts(self, args):
